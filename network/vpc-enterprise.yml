@@ -1,0 +1,435 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Enterprise VPC with configurable subnets, gateways, and security'
+
+Parameters:
+  Environment:
+    Type: String
+    Description: 'Environment name (dev, prod)'
+    AllowedValues: [dev, prod]
+  
+  VpcCidr:
+    Type: String
+    Description: 'CIDR block for VPC'
+    Default: '10.0.0.0/16'
+    AllowedPattern: '^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(\/([0-9]|[1-2][0-9]|3[0-2]))$'
+  
+  AvailabilityZoneCount:
+    Type: Number
+    Description: 'Number of Availability Zones'
+    Default: 2
+    AllowedValues: [1, 2, 3]
+  
+  CreatePublicSubnets:
+    Type: String
+    Description: 'Create public subnets'
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  
+  CreatePrivateSubnets:
+    Type: String
+    Description: 'Create private subnets'
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  
+  NatGatewayType:
+    Type: String
+    Description: 'NAT Gateway configuration'
+    Default: 'single'
+    AllowedValues: ['none', 'single', 'per-az']
+
+Conditions:
+  CreatePublicSubnetsCondition: !Equals [!Ref CreatePublicSubnets, 'true']
+  CreatePrivateSubnetsCondition: !Equals [!Ref CreatePrivateSubnets, 'true']
+  CreateInternetGateway: !Equals [!Ref CreatePublicSubnets, 'true']
+  CreateNatGateway: !And 
+    - !Equals [!Ref CreatePrivateSubnets, 'true']
+    - !Not [!Equals [!Ref NatGatewayType, 'none']]
+  CreateSingleNatGateway: !And
+    - !Equals [!Ref CreatePrivateSubnets, 'true']
+    - !Equals [!Ref NatGatewayType, 'single']
+  CreateMultipleNatGateways: !And
+    - !Equals [!Ref CreatePrivateSubnets, 'true']
+    - !Equals [!Ref NatGatewayType, 'per-az']
+  CreateAZ2: !Not [!Equals [!Ref AvailabilityZoneCount, 1]]
+  CreateAZ3: !Equals [!Ref AvailabilityZoneCount, 3]
+
+Resources:
+  # VPC
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-vpc'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Internet Gateway
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Condition: CreateInternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-igw'
+        - Key: Environment
+          Value: !Ref Environment
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Condition: CreateInternetGateway
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId: !Ref VPC
+
+  # Public Subnets
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Condition: CreatePublicSubnetsCondition
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Select [0, !Cidr [!Ref VpcCidr, 6, 8]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-public-subnet-1'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Type
+          Value: Public
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Condition: !And [CreatePublicSubnetsCondition, CreateAZ2]
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Select [1, !Cidr [!Ref VpcCidr, 6, 8]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-public-subnet-2'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Type
+          Value: Public
+
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    Condition: !And [CreatePublicSubnetsCondition, CreateAZ3]
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [2, !GetAZs '']
+      CidrBlock: !Select [2, !Cidr [!Ref VpcCidr, 6, 8]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-public-subnet-3'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Type
+          Value: Public
+
+  # Private Subnets
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Condition: CreatePrivateSubnetsCondition
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [0, !GetAZs '']
+      CidrBlock: !Select [3, !Cidr [!Ref VpcCidr, 6, 8]]
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-private-subnet-1'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Type
+          Value: Private
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Condition: !And [CreatePrivateSubnetsCondition, CreateAZ2]
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [1, !GetAZs '']
+      CidrBlock: !Select [4, !Cidr [!Ref VpcCidr, 6, 8]]
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-private-subnet-2'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Type
+          Value: Private
+
+  PrivateSubnet3:
+    Type: AWS::EC2::Subnet
+    Condition: !And [CreatePrivateSubnetsCondition, CreateAZ3]
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select [2, !GetAZs '']
+      CidrBlock: !Select [5, !Cidr [!Ref VpcCidr, 6, 8]]
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-private-subnet-3'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Type
+          Value: Private
+
+  # NAT Gateways
+  NatGateway1EIP:
+    Type: AWS::EC2::EIP
+    Condition: CreateNatGateway
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-nat-eip-1'
+
+  NatGateway1:
+    Type: AWS::EC2::NatGateway
+    Condition: CreateNatGateway
+    Properties:
+      AllocationId: !GetAtt NatGateway1EIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-nat-1'
+
+  NatGateway2EIP:
+    Type: AWS::EC2::EIP
+    Condition: CreateMultipleNatGateways
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-nat-eip-2'
+
+  NatGateway2:
+    Type: AWS::EC2::NatGateway
+    Condition: !And [CreateMultipleNatGateways, CreateAZ2]
+    Properties:
+      AllocationId: !GetAtt NatGateway2EIP.AllocationId
+      SubnetId: !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-nat-2'
+
+  NatGateway3EIP:
+    Type: AWS::EC2::EIP
+    Condition: CreateMultipleNatGateways
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-nat-eip-3'
+
+  NatGateway3:
+    Type: AWS::EC2::NatGateway
+    Condition: !And [CreateMultipleNatGateways, CreateAZ3]
+    Properties:
+      AllocationId: !GetAtt NatGateway3EIP.AllocationId
+      SubnetId: !Ref PublicSubnet3
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-nat-3'
+
+  # Route Tables
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Condition: CreatePublicSubnetsCondition
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-public-rt'
+        - Key: Environment
+          Value: !Ref Environment
+
+  DefaultPublicRoute:
+    Type: AWS::EC2::Route
+    Condition: CreatePublicSubnetsCondition
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreatePublicSubnetsCondition
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: !And [CreatePublicSubnetsCondition, CreateAZ2]
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  PublicSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: !And [CreatePublicSubnetsCondition, CreateAZ3]
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet3
+
+  # Private Route Tables
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Condition: CreatePrivateSubnetsCondition
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-private-rt-1'
+        - Key: Environment
+          Value: !Ref Environment
+
+  DefaultPrivateRoute1:
+    Type: AWS::EC2::Route
+    Condition: CreateNatGateway
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway1
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: CreatePrivateSubnetsCondition
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      SubnetId: !Ref PrivateSubnet1
+
+  PrivateRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Condition: !And [CreatePrivateSubnetsCondition, CreateAZ2]
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-private-rt-2'
+        - Key: Environment
+          Value: !Ref Environment
+
+  DefaultPrivateRoute2:
+    Type: AWS::EC2::Route
+    Condition: !And [CreateNatGateway, CreateAZ2]
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !If [CreateMultipleNatGateways, !Ref NatGateway2, !Ref NatGateway1]
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: !And [CreatePrivateSubnetsCondition, CreateAZ2]
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable2
+      SubnetId: !Ref PrivateSubnet2
+
+  PrivateRouteTable3:
+    Type: AWS::EC2::RouteTable
+    Condition: !And [CreatePrivateSubnetsCondition, CreateAZ3]
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-private-rt-3'
+        - Key: Environment
+          Value: !Ref Environment
+
+  DefaultPrivateRoute3:
+    Type: AWS::EC2::Route
+    Condition: !And [CreateNatGateway, CreateAZ3]
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable3
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !If [CreateMultipleNatGateways, !Ref NatGateway3, !Ref NatGateway1]
+
+  PrivateSubnet3RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Condition: !And [CreatePrivateSubnetsCondition, CreateAZ3]
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable3
+      SubnetId: !Ref PrivateSubnet3
+
+Outputs:
+  VpcId:
+    Description: 'VPC ID'
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${Environment}-VpcId'
+
+  VpcCidr:
+    Description: 'VPC CIDR'
+    Value: !Ref VpcCidr
+    Export:
+      Name: !Sub '${Environment}-VpcCidr'
+
+  PublicSubnetIds:
+    Description: 'Public Subnet IDs (comma-separated)'
+    Condition: CreatePublicSubnetsCondition
+    Value: !Join
+      - ','
+      - - !Ref PublicSubnet1
+        - !If [CreateAZ2, !Ref PublicSubnet2, !Ref 'AWS::NoValue']
+        - !If [CreateAZ3, !Ref PublicSubnet3, !Ref 'AWS::NoValue']
+    Export:
+      Name: !Sub '${Environment}-PublicSubnetIds'
+
+  PrivateSubnetIds:
+    Description: 'Private Subnet IDs (comma-separated)'
+    Condition: CreatePrivateSubnetsCondition
+    Value: !Join
+      - ','
+      - - !Ref PrivateSubnet1
+        - !If [CreateAZ2, !Ref PrivateSubnet2, !Ref 'AWS::NoValue']
+        - !If [CreateAZ3, !Ref PrivateSubnet3, !Ref 'AWS::NoValue']
+    Export:
+      Name: !Sub '${Environment}-PrivateSubnetIds'
+
+  PublicSubnet1Id:
+    Description: 'Public Subnet 1 ID'
+    Condition: CreatePublicSubnetsCondition
+    Value: !Ref PublicSubnet1
+    Export:
+      Name: !Sub '${Environment}-PublicSubnet1Id'
+
+  PrivateSubnet1Id:
+    Description: 'Private Subnet 1 ID'
+    Condition: CreatePrivateSubnetsCondition
+    Value: !Ref PrivateSubnet1
+    Export:
+      Name: !Sub '${Environment}-PrivateSubnet1Id'
+
+  InternetGatewayId:
+    Description: 'Internet Gateway ID'
+    Condition: CreateInternetGateway
+    Value: !Ref InternetGateway
+    Export:
+      Name: !Sub '${Environment}-InternetGatewayId'
+
+  NatGatewayConfiguration:
+    Description: 'NAT Gateway Configuration'
+    Value: !Ref NatGatewayType
+    Export:
+      Name: !Sub '${Environment}-NatGatewayType'
+
+  NetworkSummary:
+    Description: 'Network Configuration Summary'
+    Value: !Sub 
+      - 'VPC: ${VpcCidr}, AZs: ${AvailabilityZoneCount}, Public: ${CreatePublicSubnets}, Private: ${CreatePrivateSubnets}, NAT: ${NatGatewayType}'
+      - VpcCidr: !Ref VpcCidr
+        AvailabilityZoneCount: !Ref AvailabilityZoneCount
+        CreatePublicSubnets: !Ref CreatePublicSubnets
+        CreatePrivateSubnets: !Ref CreatePrivateSubnets
+        NatGatewayType: !Ref NatGatewayType

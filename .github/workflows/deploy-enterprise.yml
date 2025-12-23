@@ -32,6 +32,40 @@ on:
           - '10.0.0.0/16'
           - '10.1.0.0/16'
           - '10.2.0.0/16'
+          - '172.16.0.0/16'
+          - '192.168.0.0/16'
+      
+      az_count:
+        description: 'Number of Availability Zones'
+        required: false
+        type: choice
+        default: '2'
+        options:
+          - '1'
+          - '2'
+          - '3'
+      
+      public_subnets:
+        description: 'Create Public Subnets'
+        required: false
+        type: boolean
+        default: true
+      
+      private_subnets:
+        description: 'Create Private Subnets'
+        required: false
+        type: boolean
+        default: true
+      
+      nat_type:
+        description: 'NAT Gateway Configuration'
+        required: false
+        type: choice
+        default: 'single'
+        options:
+          - 'none'
+          - 'single'
+          - 'per-az'
       
       # Compute Configuration (for compute services)
       os_type:
@@ -130,6 +164,12 @@ jobs:
         if: ${{ github.event.inputs.service_type == 'network-foundation' }}
         run: |
           echo "🌐 Deploying Network Foundation..."
+          echo "Configuration:"
+          echo "  VPC CIDR: ${{ github.event.inputs.vpc_cidr }}"
+          echo "  AZ Count: ${{ github.event.inputs.az_count }}"
+          echo "  Public Subnets: ${{ github.event.inputs.public_subnets }}"
+          echo "  Private Subnets: ${{ github.event.inputs.private_subnets }}"
+          echo "  NAT Type: ${{ github.event.inputs.nat_type }}"
           
           aws cloudformation deploy \
             --template-file network/vpc-simple.yml \
@@ -141,6 +181,7 @@ jobs:
             --no-fail-on-empty-changeset
           
           echo "✅ Network foundation deployed"
+          echo "Note: Advanced subnet configuration (AZ count, NAT type) will be available in future updates"
       
       - name: Deploy Web Compute
         if: ${{ github.event.inputs.service_type == 'compute-web' }}

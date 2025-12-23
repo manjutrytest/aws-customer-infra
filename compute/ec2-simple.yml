@@ -233,10 +233,8 @@ Resources:
         Version: !GetAtt EC2LaunchTemplate.LatestVersionNumber
       SubnetId: !If
         - UsePublicSubnets
-        - !ImportValue
-          Fn::Sub: '${Environment}-PublicSubnetIds'
-        - !ImportValue
-          Fn::Sub: '${Environment}-PrivateSubnetIds'
+        - !Select [0, !Split [',', !ImportValue {'Fn::Sub': '${Environment}-PublicSubnetIds'}]]
+        - !Select [0, !Split [',', !ImportValue {'Fn::Sub': '${Environment}-PrivateSubnetIds'}]]
       Tags:
         - Key: Name
           Value: !Sub '${Environment}-ec2-1'
@@ -252,10 +250,8 @@ Resources:
         Version: !GetAtt EC2LaunchTemplate.LatestVersionNumber
       SubnetId: !If
         - UsePublicSubnets
-        - !ImportValue
-          Fn::Sub: '${Environment}-PublicSubnetIds'
-        - !ImportValue
-          Fn::Sub: '${Environment}-PrivateSubnetIds'
+        - !Select [0, !Split [',', !ImportValue {'Fn::Sub': '${Environment}-PublicSubnetIds'}]]
+        - !Select [0, !Split [',', !ImportValue {'Fn::Sub': '${Environment}-PrivateSubnetIds'}]]
       Tags:
         - Key: Name
           Value: !Sub '${Environment}-ec2-2'
@@ -271,10 +267,8 @@ Resources:
         Version: !GetAtt EC2LaunchTemplate.LatestVersionNumber
       SubnetId: !If
         - UsePublicSubnets
-        - !ImportValue
-          Fn::Sub: '${Environment}-PublicSubnetIds'
-        - !ImportValue
-          Fn::Sub: '${Environment}-PrivateSubnetIds'
+        - !Select [0, !Split [',', !ImportValue {'Fn::Sub': '${Environment}-PublicSubnetIds'}]]
+        - !Select [0, !Split [',', !ImportValue {'Fn::Sub': '${Environment}-PrivateSubnetIds'}]]
       Tags:
         - Key: Name
           Value: !Sub '${Environment}-ec2-3'
