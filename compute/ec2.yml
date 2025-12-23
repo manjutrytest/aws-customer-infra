@@ -52,6 +52,12 @@ Parameters:
 Mappings:
   # AMI mappings for different operating systems
   AmiMap:
+    eu-north-1:
+      AmazonLinux2: ami-09dc19036cd43ea56
+      AmazonLinux2023: ami-06d3427e4dcbeb176
+      Ubuntu2204: ami-0c33fcb753a7176f6
+      RHEL9: ami-06d3427e4dcbeb176
+      Windows2022: ami-06d3427e4dcbeb176
     us-east-1:
       AmazonLinux2: ami-0abcdef1234567890
       AmazonLinux2023: ami-0c02fb55956c7d316
@@ -59,12 +65,6 @@ Mappings:
       RHEL9: ami-0c322300a1dd5dc79
       Windows2022: ami-0c2b8ca1dad447f8a
     us-west-2:
-      AmazonLinux2: ami-0abcdef1234567890
-      AmazonLinux2023: ami-0c2d3e4f567890123
-      Ubuntu2204: ami-0a634ae95e11c6f91
-      RHEL9: ami-0c322300a1dd5dc79
-      Windows2022: ami-0c2b8ca1dad447f8a
-    eu-west-1:
       AmazonLinux2: ami-0abcdef1234567890
       AmazonLinux2023: ami-0c2d3e4f567890123
       Ubuntu2204: ami-0a634ae95e11c6f91

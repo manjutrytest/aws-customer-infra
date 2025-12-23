@@ -38,22 +38,44 @@ Parameters:
     AllowedValues: ['none', 'single', 'per-az']
 
 Conditions:
-  CreatePublicSubnetsCondition: !Equals [!Ref CreatePublicSubnets, 'true']
-  CreatePrivateSubnetsCondition: !Equals [!Ref CreatePrivateSubnets, 'true']
-  CreateInternetGateway: !Condition CreatePublicSubnetsCondition
+  CreatePublicSubnetsCondition: !Equals 
+    - !Ref CreatePublicSubnets
+    - 'true'
+  CreatePrivateSubnetsCondition: !Equals 
+    - !Ref CreatePrivateSubnets
+    - 'true'
+  CreateInternetGateway: !Equals 
+    - !Ref CreatePublicSubnets
+    - 'true'
   CreateNatGateway: !And 
-    - !Condition CreatePrivateSubnetsCondition
-    - !Not [!Equals [!Ref NatGatewayType, 'none']]
+    - !Equals 
+      - !Ref CreatePrivateSubnets
+      - 'true'
+    - !Not 
+      - !Equals 
+        - !Ref NatGatewayType
+        - 'none'
   CreateSingleNatGateway: !And
-    - !Condition CreateNatGateway
-    - !Equals [!Ref NatGatewayType, 'single']
+    - !Equals 
+      - !Ref CreatePrivateSubnets
+      - 'true'
+    - !Equals 
+      - !Ref NatGatewayType
+      - 'single'
   CreateMultipleNatGateways: !And
-    - !Condition CreateNatGateway
-    - !Equals [!Ref NatGatewayType, 'per-az']
-  
-  # AZ Conditions
-  CreateAZ2: !Not [!Equals [!Ref AvailabilityZoneCount, 1]]
-  CreateAZ3: !Equals [!Ref AvailabilityZoneCount, 3]
+    - !Equals 
+      - !Ref CreatePrivateSubnets
+      - 'true'
+    - !Equals 
+      - !Ref NatGatewayType
+      - 'per-az'
+  CreateAZ2: !Not 
+    - !Equals 
+      - !Ref AvailabilityZoneCount
+      - 1
+  CreateAZ3: !Equals 
+    - !Ref AvailabilityZoneCount
+    - 3
 
 Resources:
   # VPC

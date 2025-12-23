@@ -167,15 +167,11 @@ jobs:
           echo "🌐 Deploying Network Infrastructure..."
           
           aws cloudformation deploy \
-            --template-file network/vpc.yml \
+            --template-file network/vpc-simple.yml \
             --stack-name ${{ github.event.inputs.environment }}-network \
             --parameter-overrides \
               Environment=${{ github.event.inputs.environment }} \
               VpcCidr=${{ github.event.inputs.vpc_cidr }} \
-              AvailabilityZoneCount=${{ github.event.inputs.az_count }} \
-              CreatePublicSubnets=${{ github.event.inputs.public_subnets }} \
-              CreatePrivateSubnets=${{ github.event.inputs.private_subnets }} \
-              NatGatewayType=${{ github.event.inputs.nat_type }} \
             --capabilities CAPABILITY_IAM \
             --no-fail-on-empty-changeset
           
