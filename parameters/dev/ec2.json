@@ -1,0 +1,8 @@
+{
+  "OperatingSystem": "AmazonLinux2023",
+  "InstanceFamily": "t3",
+  "InstanceSize": "micro",
+  "InstanceCount": "1",
+  "SubnetType": "public",
+  "AssociatePublicIp": "true"
+}

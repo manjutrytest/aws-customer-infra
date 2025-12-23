@@ -1,0 +1,84 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'GitHub Deployment Role with OIDC authentication'
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Description: 'GitHub organization name'
+    Default: 'your-github-org'
+  
+  GitHubRepo:
+    Type: String
+    Description: 'GitHub repository name'
+    Default: 'aws-customer-infra'
+
+Resources:
+  GitHubDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: GitHubDeployRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Sub 'arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com'
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'token.actions.githubusercontent.com:aud': sts.amazonaws.com
+              StringLike:
+                'token.actions.githubusercontent.com:sub': !Sub 'repo:${GitHubOrg}/${GitHubRepo}:*'
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess
+      Policies:
+        - PolicyName: CloudFormationFullAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:*
+                  - iam:*
+                  - ec2:*
+                  - ssm:*
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: GitHubDeployRole
+        - Key: Purpose
+          Value: GitHub Actions Deployment
+
+  # Environment-specific policies can be added here
+  DevEnvironmentPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: DevEnvironmentAccess
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - ec2:*
+              - cloudformation:*
+            Resource: '*'
+            Condition:
+              StringEquals:
+                'aws:RequestedRegion': 
+                  - us-east-1
+                  - us-west-2
+      Roles:
+        - !Ref GitHubDeployRole
+
+Outputs:
+  GitHubDeployRoleArn:
+    Description: 'ARN of the GitHub Deploy Role'
+    Value: !GetAtt GitHubDeployRole.Arn
+    Export:
+      Name: GitHubDeployRoleArn
+  
+  GitHubDeployRoleName:
+    Description: 'Name of the GitHub Deploy Role'
+    Value: !Ref GitHubDeployRole
+    Export:
+      Name: GitHubDeployRoleName

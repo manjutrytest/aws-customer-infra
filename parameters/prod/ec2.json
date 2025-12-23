@@ -1,0 +1,8 @@
+{
+  "OperatingSystem": "AmazonLinux2023",
+  "InstanceFamily": "m6i",
+  "InstanceSize": "large",
+  "InstanceCount": "3",
+  "SubnetType": "private",
+  "AssociatePublicIp": "false"
+}

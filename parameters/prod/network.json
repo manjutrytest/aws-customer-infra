@@ -1,0 +1,7 @@
+{
+  "VpcCidr": "10.1.0.0/16",
+  "AvailabilityZoneCount": "3",
+  "CreatePublicSubnets": "true",
+  "CreatePrivateSubnets": "true",
+  "NatGatewayType": "per-az"
+}

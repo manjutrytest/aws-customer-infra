@@ -1,0 +1,36 @@
+# AWS
+.aws/
+*.pem
+*.key
+
+# Terraform (if used later)
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# CloudFormation outputs
+outputs/
+generated-params/

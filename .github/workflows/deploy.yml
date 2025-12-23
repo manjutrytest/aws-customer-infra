@@ -1,0 +1,223 @@
+name: Deploy AWS Infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target Environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+      
+      # Deployment Selection
+      deploy_network:
+        description: 'Deploy Network (VPC)'
+        required: true
+        type: boolean
+        default: true
+      
+      deploy_ec2:
+        description: 'Deploy EC2 Compute'
+        required: true
+        type: boolean
+        default: false
+      
+      # Network Configuration
+      vpc_cidr:
+        description: 'VPC CIDR Block'
+        required: false
+        type: choice
+        default: '10.0.0.0/16'
+        options:
+          - '10.0.0.0/16'
+          - '10.1.0.0/16'
+          - '10.2.0.0/16'
+          - '172.16.0.0/16'
+          - '192.168.0.0/16'
+      
+      az_count:
+        description: 'Number of Availability Zones'
+        required: false
+        type: choice
+        default: '2'
+        options:
+          - '1'
+          - '2'
+          - '3'
+      
+      public_subnets:
+        description: 'Create Public Subnets'
+        required: false
+        type: boolean
+        default: true
+      
+      private_subnets:
+        description: 'Create Private Subnets'
+        required: false
+        type: boolean
+        default: true
+      
+      nat_type:
+        description: 'NAT Gateway Configuration'
+        required: false
+        type: choice
+        default: 'single'
+        options:
+          - 'none'
+          - 'single'
+          - 'per-az'
+      
+      # EC2 Configuration
+      os_type:
+        description: 'Operating System'
+        required: false
+        type: choice
+        default: 'AmazonLinux2023'
+        options:
+          - 'AmazonLinux2'
+          - 'AmazonLinux2023'
+          - 'Ubuntu2204'
+          - 'RHEL9'
+          - 'Windows2022'
+      
+      instance_family:
+        description: 'Instance Family'
+        required: false
+        type: choice
+        default: 't3'
+        options:
+          - 't3'
+          - 't3a'
+          - 'm5'
+          - 'm6i'
+      
+      instance_size:
+        description: 'Instance Size'
+        required: false
+        type: choice
+        default: 'micro'
+        options:
+          - 'micro'
+          - 'small'
+          - 'medium'
+          - 'large'
+      
+      instance_count:
+        description: 'Number of Instances'
+        required: false
+        type: choice
+        default: '1'
+        options:
+          - '1'
+          - '2'
+          - '3'
+          - '4'
+          - '5'
+      
+      subnet_type:
+        description: 'Subnet Type for EC2'
+        required: false
+        type: choice
+        default: 'public'
+        options:
+          - 'public'
+          - 'private'
+      
+      associate_public_ip:
+        description: 'Associate Public IP'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubDeployRole
+          role-session-name: GitHubActions-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+      
+      - name: Load environment parameters
+        id: params
+        run: |
+          if [ -f "parameters/${{ github.event.inputs.environment }}/network.json" ]; then
+            echo "network_params=$(cat parameters/${{ github.event.inputs.environment }}/network.json | jq -c .)" >> $GITHUB_OUTPUT
+          fi
+          if [ -f "parameters/${{ github.event.inputs.environment }}/ec2.json" ]; then
+            echo "ec2_params=$(cat parameters/${{ github.event.inputs.environment }}/ec2.json | jq -c .)" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Deploy Network (VPC)
+        if: ${{ github.event.inputs.deploy_network == 'true' }}
+        run: |
+          echo "🌐 Deploying Network Infrastructure..."
+          
+          aws cloudformation deploy \
+            --template-file network/vpc.yml \
+            --stack-name ${{ github.event.inputs.environment }}-network \
+            --parameter-overrides \
+              Environment=${{ github.event.inputs.environment }} \
+              VpcCidr=${{ github.event.inputs.vpc_cidr }} \
+              AvailabilityZoneCount=${{ github.event.inputs.az_count }} \
+              CreatePublicSubnets=${{ github.event.inputs.public_subnets }} \
+              CreatePrivateSubnets=${{ github.event.inputs.private_subnets }} \
+              NatGatewayType=${{ github.event.inputs.nat_type }} \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset
+          
+          echo "✅ Network deployment completed"
+      
+      - name: Deploy EC2 Compute
+        if: ${{ github.event.inputs.deploy_ec2 == 'true' }}
+        run: |
+          echo "💻 Deploying EC2 Compute Infrastructure..."
+          
+          aws cloudformation deploy \
+            --template-file compute/ec2.yml \
+            --stack-name ${{ github.event.inputs.environment }}-compute \
+            --parameter-overrides \
+              Environment=${{ github.event.inputs.environment }} \
+              OperatingSystem=${{ github.event.inputs.os_type }} \
+              InstanceFamily=${{ github.event.inputs.instance_family }} \
+              InstanceSize=${{ github.event.inputs.instance_size }} \
+              InstanceCount=${{ github.event.inputs.instance_count }} \
+              SubnetType=${{ github.event.inputs.subnet_type }} \
+              AssociatePublicIp=${{ github.event.inputs.associate_public_ip }} \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset
+          
+          echo "✅ EC2 deployment completed"
+      
+      - name: Display Stack Outputs
+        run: |
+          echo "📋 Stack Outputs:"
+          
+          if [ "${{ github.event.inputs.deploy_network }}" == "true" ]; then
+            echo "🌐 Network Stack Outputs:"
+            aws cloudformation describe-stacks \
+              --stack-name ${{ github.event.inputs.environment }}-network \
+              --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
+              --output table
+          fi
+          
+          if [ "${{ github.event.inputs.deploy_ec2 }}" == "true" ]; then
+            echo "💻 EC2 Stack Outputs:"
+            aws cloudformation describe-stacks \
+              --stack-name ${{ github.event.inputs.environment }}-compute \
+              --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
+              --output table
+          fi
