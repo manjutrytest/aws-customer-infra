@@ -1,0 +1,243 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Multi-instance EC2 deployment supporting different OS types'
+
+Parameters:
+  Environment:
+    Type: String
+    Description: 'Environment name (dev, prod)'
+    AllowedValues: [dev, prod]
+  
+  # Linux Instance Configuration
+  DeployLinuxInstance:
+    Type: String
+    Description: 'Deploy Linux instance'
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  
+  LinuxOS:
+    Type: String
+    Description: 'Linux Operating System'
+    Default: 'AmazonLinux2023'
+    AllowedValues: ['AmazonLinux2', 'AmazonLinux2023', 'Ubuntu2204', 'RHEL9']
+  
+  LinuxInstanceType:
+    Type: String
+    Description: 'Linux Instance Type'
+    Default: 't3.micro'
+  
+  LinuxVolumeSize:
+    Type: Number
+    Description: 'Linux root volume size in GB'
+    Default: 20
+  
+  # Windows Instance Configuration
+  DeployWindowsInstance:
+    Type: String
+    Description: 'Deploy Windows instance'
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+  
+  WindowsInstanceType:
+    Type: String
+    Description: 'Windows Instance Type'
+    Default: 't3.medium'
+  
+  WindowsVolumeSize:
+    Type: Number
+    Description: 'Windows root volume size in GB'
+    Default: 50
+  
+  # Common Configuration
+  SubnetType:
+    Type: String
+    Description: 'Subnet type for EC2 placement'
+    Default: 'public'
+    AllowedValues: ['public', 'private']
+
+Mappings:
+  AmiMap:
+    eu-north-1:
+      AmazonLinux2: ami-09dc19036cd43ea56
+      AmazonLinux2023: ami-06d3427e4dcbeb176
+      Ubuntu2204: ami-0c33fcb753a7176f6
+      RHEL9: ami-06d3427e4dcbeb176
+      Windows2022: ami-06d3427e4dcbeb176
+
+Conditions:
+  CreateLinuxInstance: !Equals [!Ref DeployLinuxInstance, 'true']
+  CreateWindowsInstance: !Equals [!Ref DeployWindowsInstance, 'true']
+  UsePublicSubnets: !Equals [!Ref SubnetType, 'public']
+
+Resources:
+  # Security Groups
+  LinuxSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateLinuxInstance
+    Properties:
+      GroupDescription: 'Security group for Linux instances'
+      VpcId: !ImportValue
+        Fn::Sub: '${Environment}-VpcId'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+          Description: 'SSH access'
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: 'HTTP access'
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-linux-sg'
+
+  WindowsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Condition: CreateWindowsInstance
+    Properties:
+      GroupDescription: 'Security group for Windows instances'
+      VpcId: !ImportValue
+        Fn::Sub: '${Environment}-VpcId'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+          CidrIp: 0.0.0.0/0
+          Description: 'RDP access'
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: 'HTTP access'
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-windows-sg'
+
+  # IAM Role (shared)
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2InstanceRole
+
+  # Linux Instance
+  LinuxInstance:
+    Type: AWS::EC2::Instance
+    Condition: CreateLinuxInstance
+    Properties:
+      ImageId: !FindInMap [AmiMap, !Ref 'AWS::Region', !Ref LinuxOS]
+      InstanceType: !Ref LinuxInstanceType
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SecurityGroupIds:
+        - !Ref LinuxSecurityGroup
+      SubnetId: !If
+        - UsePublicSubnets
+        - !ImportValue
+          Fn::Sub: '${Environment}-PublicSubnetIds'
+        - !ImportValue
+          Fn::Sub: '${Environment}-PrivateSubnetIds'
+      BlockDeviceMappings:
+        - DeviceName: '/dev/xvda'
+          Ebs:
+            VolumeSize: !Ref LinuxVolumeSize
+            VolumeType: 'gp3'
+            DeleteOnTermination: true
+            Encrypted: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          yum update -y
+          yum install -y amazon-cloudwatch-agent httpd
+          systemctl start httpd
+          systemctl enable httpd
+          echo "<h1>Linux Server - ${Environment}</h1>" > /var/www/html/index.html
+          echo "<p>OS: ${LinuxOS}</p>" >> /var/www/html/index.html
+          echo "<p>Instance Type: ${LinuxInstanceType}</p>" >> /var/www/html/index.html
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-linux-${LinuxOS}'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: OS
+          Value: !Ref LinuxOS
+
+  # Windows Instance
+  WindowsInstance:
+    Type: AWS::EC2::Instance
+    Condition: CreateWindowsInstance
+    Properties:
+      ImageId: !FindInMap [AmiMap, !Ref 'AWS::Region', 'Windows2022']
+      InstanceType: !Ref WindowsInstanceType
+      IamInstanceProfile: !Ref EC2InstanceProfile
+      SecurityGroupIds:
+        - !Ref WindowsSecurityGroup
+      SubnetId: !If
+        - UsePublicSubnets
+        - !ImportValue
+          Fn::Sub: '${Environment}-PublicSubnetIds'
+        - !ImportValue
+          Fn::Sub: '${Environment}-PrivateSubnetIds'
+      BlockDeviceMappings:
+        - DeviceName: '/dev/sda1'
+          Ebs:
+            VolumeSize: !Ref WindowsVolumeSize
+            VolumeType: 'gp3'
+            DeleteOnTermination: true
+            Encrypted: true
+      UserData:
+        Fn::Base64: !Sub |
+          <powershell>
+          # Install IIS
+          Install-WindowsFeature -name Web-Server -IncludeManagementTools
+          # Create simple webpage
+          $html = @"
+          <h1>Windows Server - ${Environment}</h1>
+          <p>OS: Windows Server 2022</p>
+          <p>Instance Type: ${WindowsInstanceType}</p>
+          "@
+          $html | Out-File -FilePath C:\inetpub\wwwroot\index.html -Encoding UTF8
+          </powershell>
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-windows-2022'
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: OS
+          Value: 'Windows2022'
+
+Outputs:
+  LinuxInstanceId:
+    Description: 'Linux Instance ID'
+    Condition: CreateLinuxInstance
+    Value: !Ref LinuxInstance
+    Export:
+      Name: !Sub '${Environment}-LinuxInstanceId'
+
+  WindowsInstanceId:
+    Description: 'Windows Instance ID'
+    Condition: CreateWindowsInstance
+    Value: !Ref WindowsInstance
+    Export:
+      Name: !Sub '${Environment}-WindowsInstanceId'
+
+  DeploymentSummary:
+    Description: 'Deployment Summary'
+    Value: !Sub 
+      - 'Linux: ${LinuxStatus}, Windows: ${WindowsStatus}'
+      - LinuxStatus: !If [CreateLinuxInstance, !Sub '${LinuxOS} (${LinuxInstanceType})', 'Not Deployed']
+        WindowsStatus: !If [CreateWindowsInstance, !Sub 'Windows2022 (${WindowsInstanceType})', 'Not Deployed']

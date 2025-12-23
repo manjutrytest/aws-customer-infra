@@ -1,0 +1,241 @@
+name: Deploy AWS Infrastructure (Enterprise)
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target Environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - prod
+      
+      service_type:
+        description: 'Service Type to Deploy'
+        required: true
+        type: choice
+        options:
+          - network-foundation
+          - compute-web
+          - compute-database
+          - compute-bastion
+          - storage-shared
+      
+      # Network Configuration (for network-foundation)
+      vpc_cidr:
+        description: 'VPC CIDR Block'
+        required: false
+        type: choice
+        default: '10.0.0.0/16'
+        options:
+          - '10.0.0.0/16'
+          - '10.1.0.0/16'
+          - '10.2.0.0/16'
+      
+      # Compute Configuration (for compute services)
+      os_type:
+        description: 'Operating System'
+        required: false
+        type: choice
+        default: 'AmazonLinux2023'
+        options:
+          - 'AmazonLinux2023'
+          - 'Ubuntu2204'
+          - 'Windows2022'
+      
+      instance_type:
+        description: 'Instance Type'
+        required: false
+        type: choice
+        default: 't3.micro'
+        options:
+          - 't3.micro'
+          - 't3.small'
+          - 't3.medium'
+          - 'm6i.large'
+          - 'm6i.xlarge'
+      
+      instance_count:
+        description: 'Number of Instances'
+        required: false
+        type: choice
+        default: '1'
+        options:
+          - '1'
+          - '2'
+          - '3'
+      
+      subnet_type:
+        description: 'Subnet Placement'
+        required: false
+        type: choice
+        default: 'private'
+        options:
+          - 'public'
+          - 'private'
+      
+      storage_size:
+        description: 'Storage Size (GB)'
+        required: false
+        type: choice
+        default: '20'
+        options:
+          - '20'
+          - '50'
+          - '100'
+          - '200'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  validate-deployment:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ github.event.inputs.environment == 'dev' && 'GitHubActionsOIDCRole-dev' || 'GitHubActionsOIDCRole-prod' }}
+          role-session-name: GitHubActions-${{ github.run_id }}
+          aws-region: ${{ vars.AWS_REGION || 'eu-north-1' }}
+      
+      - name: Validate Dependencies
+        run: |
+          echo "🔍 Validating deployment dependencies..."
+          
+          SERVICE_TYPE="${{ github.event.inputs.service_type }}"
+          ENVIRONMENT="${{ github.event.inputs.environment }}"
+          
+          # Check if network foundation exists for compute services
+          if [[ "$SERVICE_TYPE" == compute-* ]]; then
+            echo "Checking for network foundation..."
+            if ! aws cloudformation describe-stacks --stack-name ${ENVIRONMENT}-network-foundation --region eu-north-1 >/dev/null 2>&1; then
+              echo "❌ Error: Network foundation not found!"
+              echo "Please deploy network-foundation first"
+              exit 1
+            fi
+            echo "✅ Network foundation found"
+          fi
+          
+          echo "✅ Dependencies validated"
+      
+      - name: Deploy Network Foundation
+        if: ${{ github.event.inputs.service_type == 'network-foundation' }}
+        run: |
+          echo "🌐 Deploying Network Foundation..."
+          
+          aws cloudformation deploy \
+            --template-file network/vpc-simple.yml \
+            --stack-name ${{ github.event.inputs.environment }}-network-foundation \
+            --parameter-overrides \
+              Environment=${{ github.event.inputs.environment }} \
+              VpcCidr=${{ github.event.inputs.vpc_cidr }} \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset
+          
+          echo "✅ Network foundation deployed"
+      
+      - name: Deploy Web Compute
+        if: ${{ github.event.inputs.service_type == 'compute-web' }}
+        run: |
+          echo "🖥️ Deploying Web Compute Layer..."
+          
+          aws cloudformation deploy \
+            --template-file compute/ec2-simple.yml \
+            --stack-name ${{ github.event.inputs.environment }}-compute-web \
+            --parameter-overrides \
+              Environment=${{ github.event.inputs.environment }} \
+              OperatingSystem=${{ github.event.inputs.os_type }} \
+              InstanceFamily=t3 \
+              InstanceSize=${{ github.event.inputs.instance_type == 't3.micro' && 'micro' || 'small' }} \
+              InstanceCount=${{ github.event.inputs.instance_count }} \
+              SubnetType=private \
+              AssociatePublicIp=false \
+              RootVolumeSize=${{ github.event.inputs.storage_size }} \
+              RootVolumeType=gp3 \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset
+          
+          echo "✅ Web compute layer deployed"
+      
+      - name: Deploy Database Compute
+        if: ${{ github.event.inputs.service_type == 'compute-database' }}
+        run: |
+          echo "🗄️ Deploying Database Compute Layer..."
+          
+          aws cloudformation deploy \
+            --template-file compute/ec2-simple.yml \
+            --stack-name ${{ github.event.inputs.environment }}-compute-database \
+            --parameter-overrides \
+              Environment=${{ github.event.inputs.environment }} \
+              OperatingSystem=${{ github.event.inputs.os_type }} \
+              InstanceFamily=m6i \
+              InstanceSize=large \
+              InstanceCount=1 \
+              SubnetType=private \
+              AssociatePublicIp=false \
+              RootVolumeSize=${{ github.event.inputs.storage_size }} \
+              RootVolumeType=gp3 \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset
+          
+          echo "✅ Database compute layer deployed"
+      
+      - name: Deploy Bastion Host
+        if: ${{ github.event.inputs.service_type == 'compute-bastion' }}
+        run: |
+          echo "🔐 Deploying Bastion Host..."
+          
+          aws cloudformation deploy \
+            --template-file compute/ec2-simple.yml \
+            --stack-name ${{ github.event.inputs.environment }}-compute-bastion \
+            --parameter-overrides \
+              Environment=${{ github.event.inputs.environment }} \
+              OperatingSystem=AmazonLinux2023 \
+              InstanceFamily=t3 \
+              InstanceSize=micro \
+              InstanceCount=1 \
+              SubnetType=public \
+              AssociatePublicIp=true \
+              RootVolumeSize=20 \
+              RootVolumeType=gp3 \
+            --capabilities CAPABILITY_IAM \
+            --no-fail-on-empty-changeset
+          
+          echo "✅ Bastion host deployed"
+      
+      - name: Display Deployment Summary
+        run: |
+          echo "📋 Deployment Summary:"
+          echo "Environment: ${{ github.event.inputs.environment }}"
+          echo "Service: ${{ github.event.inputs.service_type }}"
+          echo "Stack Name: ${{ github.event.inputs.environment }}-${{ github.event.inputs.service_type }}"
+          
+          echo ""
+          echo "📊 Stack Status:"
+          aws cloudformation describe-stacks \
+            --stack-name ${{ github.event.inputs.environment }}-${{ github.event.inputs.service_type }} \
+            --query 'Stacks[0].[StackName,StackStatus]' \
+            --output table
+          
+          echo ""
+          echo "📤 Stack Outputs:"
+          aws cloudformation describe-stacks \
+            --stack-name ${{ github.event.inputs.environment }}-${{ github.event.inputs.service_type }} \
+            --query 'Stacks[0].Outputs[*].[OutputKey,OutputValue]' \
+            --output table || echo "No outputs available"
+      
+      - name: List All Environment Stacks
+        run: |
+          echo "🏗️ All stacks in ${{ github.event.inputs.environment }} environment:"
+          aws cloudformation list-stacks \
+            --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE \
+            --query "StackSummaries[?starts_with(StackName, '${{ github.event.inputs.environment }}-')].[StackName,StackStatus,CreationTime]" \
+            --output table

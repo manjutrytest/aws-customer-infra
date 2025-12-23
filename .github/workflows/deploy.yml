@@ -24,6 +24,13 @@ on:
         type: boolean
         default: false
       
+      # Stack Naming
+      stack_suffix:
+        description: 'Stack Suffix (for multiple deployments)'
+        required: false
+        type: string
+        default: 'main'
+      
       # Network Configuration
       vpc_cidr:
         description: 'VPC CIDR Block'
@@ -207,7 +214,7 @@ jobs:
           
           aws cloudformation deploy \
             --template-file compute/ec2-simple.yml \
-            --stack-name ${{ github.event.inputs.environment }}-compute \
+            --stack-name ${{ github.event.inputs.environment }}-compute-${{ github.event.inputs.stack_suffix }} \
             --parameter-overrides \
               Environment=${{ github.event.inputs.environment }} \
               OperatingSystem=${{ github.event.inputs.os_type }} \
