@@ -22,7 +22,7 @@ $TrustPolicy = @"
     {
       "Effect": "Allow",
       "Principal": {
-        "Federated": "arn:aws:iam::$AWSAccountId:oidc-provider/token.actions.githubusercontent.com"
+        "Federated": "arn:aws:iam::$AWSAccountId`:oidc-provider/token.actions.githubusercontent.com"
       },
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
@@ -30,7 +30,7 @@ $TrustPolicy = @"
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
         },
         "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:$GitHubOrg/$GitHubRepo:*"
+          "token.actions.githubusercontent.com:sub": "repo:$GitHubOrg/$GitHubRepo`:*"
         }
       }
     }

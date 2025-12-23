@@ -27,8 +27,8 @@ configure-existing-roles.bat
 
 **Option B: Manual configuration**
 Update the trust policy of your existing roles to include your repository:
-- **GitHubActionsDevRole** (for dev environment)
-- **GitHubActionsProdRole** (for prod environment)
+- **GitHubActionsOIDCRole-dev** (for dev environment)
+- **GitHubActionsOIDCRole-prod** (for prod environment)
 
 ### 2. Configure GitHub Repository
 

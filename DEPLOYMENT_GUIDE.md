@@ -6,7 +6,7 @@
 2. **GitHub Repository**: https://github.com/manjutrytest/aws-customer-infra
 3. **Existing OIDC Infrastructure**: 
    - Stack: `oidc-infra-shared` in `eu-north-1`
-   - Roles: `GitHubActionsDevRole` and `GitHubActionsProdRole`
+   - Roles: `GitHubActionsOIDCRole-dev` and `GitHubActionsOIDCRole-prod`
 4. **AWS CLI**: Configured with permissions to update IAM roles
 
 ## Step 1: Repository Setup
@@ -73,13 +73,13 @@ configure-existing-roles.bat
 ```powershell
 # Update dev role
 aws iam update-assume-role-policy `
-    --role-name GitHubActionsDevRole `
+    --role-name GitHubActionsOIDCRole-dev `
     --policy-document file://trust-policy.json `
     --region eu-north-1
 
 # Update prod role
 aws iam update-assume-role-policy `
-    --role-name GitHubActionsProdRole `
+    --role-name GitHubActionsOIDCRole-prod `
     --policy-document file://trust-policy.json `
     --region eu-north-1
 ```
@@ -168,8 +168,8 @@ aws ec2 describe-instances --filters "Name=tag:Environment,Values=dev" --region 
 
 **Solution**: Verify repository trust policy in existing roles:
 ```powershell
-aws iam get-role --role-name GitHubActionsDevRole --query 'Role.AssumeRolePolicyDocument' --region eu-north-1
-aws iam get-role --role-name GitHubActionsProdRole --query 'Role.AssumeRolePolicyDocument' --region eu-north-1
+aws iam get-role --role-name GitHubActionsOIDCRole-dev --query 'Role.AssumeRolePolicyDocument' --region eu-north-1
+aws iam get-role --role-name GitHubActionsOIDCRole-prod --query 'Role.AssumeRolePolicyDocument' --region eu-north-1
 ```
 
 #### 2. VPC Export Not Found
@@ -182,8 +182,8 @@ aws iam get-role --role-name GitHubActionsProdRole --query 'Role.AssumeRolePolic
 
 **Solution**: Ensure your existing roles have the necessary permissions. Check attached policies:
 ```powershell
-aws iam list-attached-role-policies --role-name GitHubActionsDevRole --region eu-north-1
-aws iam list-attached-role-policies --role-name GitHubActionsProdRole --region eu-north-1
+aws iam list-attached-role-policies --role-name GitHubActionsOIDCRole-dev --region eu-north-1
+aws iam list-attached-role-policies --role-name GitHubActionsOIDCRole-prod --region eu-north-1
 ```
 
 ### Validation Commands
