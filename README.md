@@ -12,28 +12,33 @@ This repository deploys AWS infrastructure in a modular, option-driven approach:
 
 ## 🚀 Quick Start
 
-### 1. Bootstrap (One-time setup)
+### 1. Configure Existing OIDC Roles
 
-Deploy OIDC provider and GitHub deployment role in your target AWS account:
+Since you already have OIDC provider and roles set up, just configure them for your repository:
 
-```bash
-# Deploy OIDC provider
-aws cloudformation deploy \
-  --template-file bootstrap/oidc-provider.yml \
-  --stack-name github-oidc-provider \
-  --capabilities CAPABILITY_IAM
+**Option A: Use the automated script (Recommended)**
+```powershell
+# PowerShell (Windows)
+.\configure-existing-roles.ps1
 
-# Deploy GitHub deployment role
-aws cloudformation deploy \
-  --template-file bootstrap/github-deploy-role.yml \
-  --stack-name github-deploy-role \
-  --capabilities CAPABILITY_IAM \
-  --parameter-overrides \
-    GitHubOrg=YOUR_GITHUB_ORG \
-    GitHubRepo=YOUR_REPO_NAME
+# Or Command Prompt (Windows)
+configure-existing-roles.bat
 ```
 
-### 2. Deploy Infrastructure
+**Option B: Manual configuration**
+Update the trust policy of your existing roles to include your repository:
+- **GitHubActionsDevRole** (for dev environment)
+- **GitHubActionsProdRole** (for prod environment)
+
+### 2. Configure GitHub Repository
+
+1. Go to **Settings → Secrets and variables → Actions**
+2. Add these secrets:
+   - `AWS_ACCOUNT_ID`: `821706771879`
+3. Add these variables:
+   - `AWS_REGION`: `eu-north-1`
+
+### 3. Deploy Infrastructure
 
 1. Go to **Actions** tab in GitHub
 2. Select **Deploy AWS Infrastructure** workflow

@@ -2,10 +2,12 @@
 
 ## Prerequisites
 
-1. **AWS Account**: Target customer AWS account
-2. **GitHub Repository**: This repository in customer's GitHub organization
-3. **AWS CLI**: Configured with admin permissions for bootstrap
-4. **GitHub Secrets**: Configure repository secrets
+1. **AWS Account**: Your AWS account (821706771879) with existing OIDC setup
+2. **GitHub Repository**: https://github.com/manjutrytest/aws-customer-infra
+3. **Existing OIDC Infrastructure**: 
+   - Stack: `oidc-infra-shared` in `eu-north-1`
+   - Roles: `GitHubActionsDevRole` and `GitHubActionsProdRole`
+4. **AWS CLI**: Configured with permissions to update IAM roles
 
 ## Step 1: Repository Setup
 
@@ -19,35 +21,68 @@ cd aws-customer-infra
 Go to repository **Settings → Secrets and variables → Actions**
 
 Add these secrets:
-- `AWS_ACCOUNT_ID`: Your AWS account ID (12 digits)
+- `AWS_ACCOUNT_ID`: `821706771879`
 
 Add these variables:
-- `AWS_REGION`: Your preferred AWS region (e.g., `us-east-1`)
+- `AWS_REGION`: `eu-north-1`
 
-## Step 2: Bootstrap AWS Account
+## Step 2: Configure Existing OIDC Roles
 
-### 2.1 Deploy OIDC Provider
-```bash
-aws cloudformation deploy \
-  --template-file bootstrap/oidc-provider.yml \
-  --stack-name github-oidc-provider \
-  --capabilities CAPABILITY_IAM \
-  --region us-east-1
+Since you already have OIDC provider and roles, we just need to update their trust policies to include your repository.
+
+### 2.1 Quick Configuration (Recommended)
+Run the automated configuration script:
+
+**PowerShell:**
+```powershell
+.\configure-existing-roles.ps1
 ```
 
-### 2.2 Deploy GitHub Role
-```bash
-aws cloudformation deploy \
-  --template-file bootstrap/github-deploy-role.yml \
-  --stack-name github-deploy-role \
-  --capabilities CAPABILITY_IAM \
-  --parameter-overrides \
-    GitHubOrg=YOUR_GITHUB_ORG \
-    GitHubRepo=aws-customer-infra \
-  --region us-east-1
+**Command Prompt:**
+```cmd
+configure-existing-roles.bat
 ```
 
-**Replace `YOUR_GITHUB_ORG` with your actual GitHub organization name.**
+### 2.2 Manual Configuration (Alternative)
+
+**Create trust policy file (trust-policy.json):**
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::821706771879:oidc-provider/token.actions.githubusercontent.com"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+        },
+        "StringLike": {
+          "token.actions.githubusercontent.com:sub": "repo:manjutrytest/aws-customer-infra:*"
+        }
+      }
+    }
+  ]
+}
+```
+
+**Update the roles:**
+```powershell
+# Update dev role
+aws iam update-assume-role-policy `
+    --role-name GitHubActionsDevRole `
+    --policy-document file://trust-policy.json `
+    --region eu-north-1
+
+# Update prod role
+aws iam update-assume-role-policy `
+    --role-name GitHubActionsProdRole `
+    --policy-document file://trust-policy.json `
+    --region eu-north-1
+```
 
 ## Step 3: Deploy Infrastructure
 
@@ -80,17 +115,17 @@ aws cloudformation deploy \
 ## Step 4: Verify Deployment
 
 ### 4.1 Check CloudFormation Stacks
-```bash
-aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE
+```powershell
+aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE --region eu-north-1
 ```
 
 ### 4.2 Verify Resources
-```bash
+```powershell
 # Check VPC
-aws ec2 describe-vpcs --filters "Name=tag:Environment,Values=dev"
+aws ec2 describe-vpcs --filters "Name=tag:Environment,Values=dev" --region eu-north-1
 
 # Check EC2 instances
-aws ec2 describe-instances --filters "Name=tag:Environment,Values=dev"
+aws ec2 describe-instances --filters "Name=tag:Environment,Values=dev" --region eu-north-1
 ```
 
 ### 4.3 Test Web Server
@@ -131,9 +166,10 @@ aws ec2 describe-instances --filters "Name=tag:Environment,Values=dev"
 #### 1. OIDC Trust Relationship
 **Error**: `AssumeRoleWithWebIdentity is not authorized`
 
-**Solution**: Verify GitHub organization and repository names in bootstrap role:
-```bash
-aws iam get-role --role-name GitHubDeployRole --query 'Role.AssumeRolePolicyDocument'
+**Solution**: Verify repository trust policy in existing roles:
+```powershell
+aws iam get-role --role-name GitHubActionsDevRole --query 'Role.AssumeRolePolicyDocument' --region eu-north-1
+aws iam get-role --role-name GitHubActionsProdRole --query 'Role.AssumeRolePolicyDocument' --region eu-north-1
 ```
 
 #### 2. VPC Export Not Found
@@ -144,22 +180,26 @@ aws iam get-role --role-name GitHubDeployRole --query 'Role.AssumeRolePolicyDocu
 #### 3. Insufficient Permissions
 **Error**: `User is not authorized to perform: ec2:CreateVpc`
 
-**Solution**: Ensure GitHub role has PowerUserAccess policy attached.
+**Solution**: Ensure your existing roles have the necessary permissions. Check attached policies:
+```powershell
+aws iam list-attached-role-policies --role-name GitHubActionsDevRole --region eu-north-1
+aws iam list-attached-role-policies --role-name GitHubActionsProdRole --region eu-north-1
+```
 
 ### Validation Commands
 
-```bash
+```powershell
 # Check stack status
-aws cloudformation describe-stacks --stack-name dev-network
+aws cloudformation describe-stacks --stack-name dev-network --region eu-north-1
 
 # List exports
-aws cloudformation list-exports
+aws cloudformation list-exports --region eu-north-1
 
 # Check EC2 instances
-aws ec2 describe-instances --filters "Name=tag:Environment,Values=dev"
+aws ec2 describe-instances --filters "Name=tag:Environment,Values=dev" --region eu-north-1
 
 # Test SSM connectivity
-aws ssm describe-instance-information
+aws ssm describe-instance-information --region eu-north-1
 ```
 
 ## Next Steps

@@ -147,9 +147,9 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubDeployRole
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/${{ github.event.inputs.environment == 'dev' && 'GitHubActionsDevRole' || 'GitHubActionsProdRole' }}
           role-session-name: GitHubActions-${{ github.run_id }}
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          aws-region: ${{ vars.AWS_REGION || 'eu-north-1' }}
       
       - name: Load environment parameters
         id: params
