@@ -1,0 +1,276 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Simple EC2 instances that consume VPC foundation'
+
+Parameters:
+  Environment:
+    Type: String
+    Description: 'Environment name (dev, prod)'
+    AllowedValues: [dev, prod]
+  
+  OperatingSystem:
+    Type: String
+    Description: 'Operating System'
+    Default: 'AmazonLinux2023'
+    AllowedValues:
+      - 'AmazonLinux2'
+      - 'AmazonLinux2023'
+      - 'Ubuntu2204'
+      - 'RHEL9'
+      - 'Windows2022'
+  
+  InstanceFamily:
+    Type: String
+    Description: 'Instance Family'
+    Default: 't3'
+    AllowedValues: ['t3', 't3a', 'm5', 'm6i']
+  
+  InstanceSize:
+    Type: String
+    Description: 'Instance Size'
+    Default: 'micro'
+    AllowedValues: ['micro', 'small', 'medium', 'large']
+  
+  InstanceCount:
+    Type: Number
+    Description: 'Number of instances to create'
+    Default: 1
+    MinValue: 1
+    MaxValue: 3
+  
+  SubnetType:
+    Type: String
+    Description: 'Subnet type for EC2 placement'
+    Default: 'public'
+    AllowedValues: ['public', 'private']
+  
+  AssociatePublicIp:
+    Type: String
+    Description: 'Associate public IP address'
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+
+Mappings:
+  # AMI mappings for different operating systems
+  AmiMap:
+    eu-north-1:
+      AmazonLinux2: ami-09dc19036cd43ea56
+      AmazonLinux2023: ami-06d3427e4dcbeb176
+      Ubuntu2204: ami-0c33fcb753a7176f6
+      RHEL9: ami-06d3427e4dcbeb176
+      Windows2022: ami-06d3427e4dcbeb176
+    us-east-1:
+      AmazonLinux2: ami-0abcdef1234567890
+      AmazonLinux2023: ami-0c02fb55956c7d316
+      Ubuntu2204: ami-0a634ae95e11c6f91
+      RHEL9: ami-0c322300a1dd5dc79
+      Windows2022: ami-0c2b8ca1dad447f8a
+
+Conditions:
+  UsePublicSubnets: !Equals [!Ref SubnetType, 'public']
+  IsWindowsOS: !Equals [!Ref OperatingSystem, 'Windows2022']
+  CreateInstance2: !Not [!Equals [!Ref InstanceCount, 1]]
+  CreateInstance3: !Equals [!Ref InstanceCount, 3]
+
+Resources:
+  # Security Group
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub 'Security group for ${Environment} EC2 instances'
+      VpcId: !ImportValue
+        Fn::Sub: '${Environment}-VpcId'
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+          Description: 'SSH access'
+        - !If
+          - IsWindowsOS
+          - IpProtocol: tcp
+            FromPort: 3389
+            ToPort: 3389
+            CidrIp: 0.0.0.0/0
+            Description: 'RDP access'
+          - !Ref 'AWS::NoValue'
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: 'HTTP access'
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: 'HTTPS access'
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: 'All outbound traffic'
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-ec2-sg'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # IAM Role for EC2 instances
+  EC2InstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-ec2-role'
+        - Key: Environment
+          Value: !Ref Environment
+
+  EC2InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref EC2InstanceRole
+
+  # Launch Template
+  EC2LaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: !Sub '${Environment}-ec2-template'
+      LaunchTemplateData:
+        ImageId: !FindInMap [AmiMap, !Ref 'AWS::Region', !Ref OperatingSystem]
+        InstanceType: !Sub '${InstanceFamily}.${InstanceSize}'
+        IamInstanceProfile:
+          Arn: !GetAtt EC2InstanceProfile.Arn
+        SecurityGroupIds:
+          - !Ref EC2SecurityGroup
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            yum update -y
+            yum install -y amazon-cloudwatch-agent
+            
+            # Install SSM agent if not present
+            if ! systemctl is-active --quiet amazon-ssm-agent; then
+              yum install -y amazon-ssm-agent
+              systemctl enable amazon-ssm-agent
+              systemctl start amazon-ssm-agent
+            fi
+            
+            # Basic web server setup for testing
+            if [[ "${OperatingSystem}" != "Windows2022" ]]; then
+              yum install -y httpd
+              systemctl start httpd
+              systemctl enable httpd
+              echo "<h1>Hello from ${Environment} Environment</h1>" > /var/www/html/index.html
+              echo "<p>Instance ID: $(curl -s http://169.254.169.254/latest/meta-data/instance-id)</p>" >> /var/www/html/index.html
+              echo "<p>Availability Zone: $(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)</p>" >> /var/www/html/index.html
+            fi
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: !Sub '${Environment}-ec2-instance'
+              - Key: Environment
+                Value: !Ref Environment
+              - Key: OperatingSystem
+                Value: !Ref OperatingSystem
+          - ResourceType: volume
+            Tags:
+              - Key: Name
+                Value: !Sub '${Environment}-ec2-volume'
+              - Key: Environment
+                Value: !Ref Environment
+
+  # EC2 Instances
+  EC2Instance1:
+    Type: AWS::EC2::Instance
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref EC2LaunchTemplate
+        Version: !GetAtt EC2LaunchTemplate.LatestVersionNumber
+      SubnetId: !If
+        - UsePublicSubnets
+        - !ImportValue
+          Fn::Sub: '${Environment}-PublicSubnetIds'
+        - !ImportValue
+          Fn::Sub: '${Environment}-PrivateSubnetIds'
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-ec2-1'
+        - Key: Environment
+          Value: !Ref Environment
+
+  EC2Instance2:
+    Type: AWS::EC2::Instance
+    Condition: CreateInstance2
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref EC2LaunchTemplate
+        Version: !GetAtt EC2LaunchTemplate.LatestVersionNumber
+      SubnetId: !If
+        - UsePublicSubnets
+        - !ImportValue
+          Fn::Sub: '${Environment}-PublicSubnetIds'
+        - !ImportValue
+          Fn::Sub: '${Environment}-PrivateSubnetIds'
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-ec2-2'
+        - Key: Environment
+          Value: !Ref Environment
+
+  EC2Instance3:
+    Type: AWS::EC2::Instance
+    Condition: CreateInstance3
+    Properties:
+      LaunchTemplate:
+        LaunchTemplateId: !Ref EC2LaunchTemplate
+        Version: !GetAtt EC2LaunchTemplate.LatestVersionNumber
+      SubnetId: !If
+        - UsePublicSubnets
+        - !ImportValue
+          Fn::Sub: '${Environment}-PublicSubnetIds'
+        - !ImportValue
+          Fn::Sub: '${Environment}-PrivateSubnetIds'
+      Tags:
+        - Key: Name
+          Value: !Sub '${Environment}-ec2-3'
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  SecurityGroupId:
+    Description: 'Security Group ID'
+    Value: !Ref EC2SecurityGroup
+    Export:
+      Name: !Sub '${Environment}-EC2SecurityGroupId'
+
+  InstanceIds:
+    Description: 'EC2 Instance IDs'
+    Value: !Join
+      - ','
+      - - !Ref EC2Instance1
+        - !If [CreateInstance2, !Ref EC2Instance2, !Ref 'AWS::NoValue']
+        - !If [CreateInstance3, !Ref EC2Instance3, !Ref 'AWS::NoValue']
+    Export:
+      Name: !Sub '${Environment}-EC2InstanceIds'
+
+  LaunchTemplateId:
+    Description: 'Launch Template ID'
+    Value: !Ref EC2LaunchTemplate
+    Export:
+      Name: !Sub '${Environment}-EC2LaunchTemplateId'
+
+  InstanceRole:
+    Description: 'EC2 Instance Role ARN'
+    Value: !GetAtt EC2InstanceRole.Arn
+    Export:
+      Name: !Sub '${Environment}-EC2InstanceRoleArn'

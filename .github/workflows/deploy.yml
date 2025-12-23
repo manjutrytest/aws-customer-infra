@@ -113,8 +113,6 @@ on:
           - '1'
           - '2'
           - '3'
-          - '4'
-          - '5'
       
       subnet_type:
         description: 'Subnet Type for EC2'
@@ -183,7 +181,7 @@ jobs:
           echo "💻 Deploying EC2 Compute Infrastructure..."
           
           aws cloudformation deploy \
-            --template-file compute/ec2.yml \
+            --template-file compute/ec2-simple.yml \
             --stack-name ${{ github.event.inputs.environment }}-compute \
             --parameter-overrides \
               Environment=${{ github.event.inputs.environment }} \
