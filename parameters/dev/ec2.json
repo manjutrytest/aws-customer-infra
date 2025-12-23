@@ -4,5 +4,7 @@
   "InstanceSize": "micro",
   "InstanceCount": "1",
   "SubnetType": "public",
-  "AssociatePublicIp": "true"
+  "AssociatePublicIp": "true",
+  "RootVolumeSize": "20",
+  "RootVolumeType": "gp3"
 }

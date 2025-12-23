@@ -128,6 +128,31 @@ on:
         required: false
         type: boolean
         default: true
+      
+      # Storage Configuration
+      root_volume_size:
+        description: 'Root Volume Size (GB)'
+        required: false
+        type: choice
+        default: '20'
+        options:
+          - '8'
+          - '20'
+          - '30'
+          - '50'
+          - '100'
+          - '200'
+      
+      root_volume_type:
+        description: 'Root Volume Type'
+        required: false
+        type: choice
+        default: 'gp3'
+        options:
+          - 'gp2'
+          - 'gp3'
+          - 'io1'
+          - 'io2'
 
 permissions:
   id-token: write
@@ -191,6 +216,8 @@ jobs:
               InstanceCount=${{ github.event.inputs.instance_count }} \
               SubnetType=${{ github.event.inputs.subnet_type }} \
               AssociatePublicIp=${{ github.event.inputs.associate_public_ip }} \
+              RootVolumeSize=${{ github.event.inputs.root_volume_size }} \
+              RootVolumeType=${{ github.event.inputs.root_volume_type }} \
             --capabilities CAPABILITY_IAM \
             --no-fail-on-empty-changeset
           

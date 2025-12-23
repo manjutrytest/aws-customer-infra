@@ -4,5 +4,7 @@
   "InstanceSize": "large",
   "InstanceCount": "3",
   "SubnetType": "private",
-  "AssociatePublicIp": "false"
+  "AssociatePublicIp": "false",
+  "RootVolumeSize": "50",
+  "RootVolumeType": "gp3"
 }

@@ -48,6 +48,19 @@ Parameters:
     Description: 'Associate public IP address'
     Default: 'true'
     AllowedValues: ['true', 'false']
+  
+  RootVolumeSize:
+    Type: Number
+    Description: 'Root volume size in GB'
+    Default: 20
+    MinValue: 8
+    MaxValue: 1000
+  
+  RootVolumeType:
+    Type: String
+    Description: 'Root volume type'
+    Default: 'gp3'
+    AllowedValues: ['gp2', 'gp3', 'io1', 'io2']
 
 Mappings:
   # AMI mappings for different operating systems
@@ -64,6 +77,21 @@ Mappings:
       Ubuntu2204: ami-0a634ae95e11c6f91
       RHEL9: ami-0c322300a1dd5dc79
       Windows2022: ami-0c2b8ca1dad447f8a
+  
+  # Device name mappings for different operating systems
+  DeviceMap:
+    eu-north-1:
+      AmazonLinux2: '/dev/xvda'
+      AmazonLinux2023: '/dev/xvda'
+      Ubuntu2204: '/dev/sda1'
+      RHEL9: '/dev/sda1'
+      Windows2022: '/dev/sda1'
+    us-east-1:
+      AmazonLinux2: '/dev/xvda'
+      AmazonLinux2023: '/dev/xvda'
+      Ubuntu2204: '/dev/sda1'
+      RHEL9: '/dev/sda1'
+      Windows2022: '/dev/sda1'
 
 Conditions:
   UsePublicSubnets: !Equals [!Ref SubnetType, 'public']
@@ -151,6 +179,13 @@ Resources:
           Arn: !GetAtt EC2InstanceProfile.Arn
         SecurityGroupIds:
           - !Ref EC2SecurityGroup
+        BlockDeviceMappings:
+          - DeviceName: !FindInMap [DeviceMap, !Ref 'AWS::Region', !Ref OperatingSystem]
+            Ebs:
+              VolumeSize: !Ref RootVolumeSize
+              VolumeType: !Ref RootVolumeType
+              DeleteOnTermination: true
+              Encrypted: true
         UserData:
           Fn::Base64: !Sub |
             #!/bin/bash
@@ -274,3 +309,9 @@ Outputs:
     Value: !GetAtt EC2InstanceRole.Arn
     Export:
       Name: !Sub '${Environment}-EC2InstanceRoleArn'
+  
+  StorageConfiguration:
+    Description: 'Storage Configuration'
+    Value: !Sub '${RootVolumeSize}GB ${RootVolumeType}'
+    Export:
+      Name: !Sub '${Environment}-StorageConfig'

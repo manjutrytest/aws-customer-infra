@@ -59,9 +59,11 @@ Update the trust policy of your existing roles to include your repository:
 - **OS**: Amazon Linux 2/2023, Ubuntu 22.04, RHEL 9, Windows 2022
 - **Instance Family**: t3, t3a, m5, m6i
 - **Instance Size**: micro, small, medium, large
-- **Count**: 1-5 instances
+- **Count**: 1-3 instances
 - **Subnet Type**: Public or private
 - **Public IP**: Enable/disable
+- **Storage Size**: 8GB to 200GB root volume
+- **Storage Type**: gp2, gp3, io1, io2
 
 ## 🔒 Security
 
